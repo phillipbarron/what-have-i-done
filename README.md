@@ -22,6 +22,8 @@ yarn i
 ## Usage
 Instructions on how to use your project.
 
+You must export a github token with repo access as `GH_TOKEN` in your environment.   
+
 ```bash
 # Run the project
 npm start [org] [from (optional)] [to (optional)]
