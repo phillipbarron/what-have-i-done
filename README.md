@@ -2,7 +2,7 @@
 
 ## Description
 
-Fetches your commits and reviews from Githum for a specified org. Outputs as HTML
+Fetches your commits and reviews from Github for a specified org. Outputs as HTML
 Can limit to a date range supplied as arguments
 
 ## Installation
