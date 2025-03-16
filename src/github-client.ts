@@ -1,6 +1,5 @@
 import axios from 'axios';
 import fs from 'fs';
-import { URLSearchParams } from 'url';
 
 // Define the GitHub API URL
 const GITHUB_API_URL = 'https://api.github.com/graphql';
@@ -13,43 +12,58 @@ if (!GH_TOKEN) {
     process.exit(1);
 }
 
-const getLoggedInUserQuery = `
-{
-    viewer {
-        login
+// A function to fetch the logged-in user's data from GitHub's GraphQL API
+async function fetchLoggedInUser(token: string): Promise<string> {
+    // The GraphQL query to fetch the logged-in user's details
+    const query = `
+      query {
+        viewer {
+          login
+          name
+          url
+        }
+      }
+    `;
+
+    // Request options for the fetch call
+    const requestOptions: RequestInit = {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({query})
+    };
+
+    try {
+        const response = await fetch(GITHUB_API_URL, requestOptions);
+
+        // Check if the response is ok (status 200)
+        if (!response.ok) {
+            throw new Error(`GitHub API request failed with status: ${response.status}`);
+        }
+
+        const resp = await response.json();
+        const { data: { viewer: { login : user }}} = resp
+
+        // Return the logged-in user's data (viewer)
+        return user;
+    } catch (error) {
+        console.error('Error fetching GitHub user data:', error);
+        throw error;
     }
 }
-`;
 
-const getLoggedInUser = async (): Promise<string> => {
-    try {
-        const response = await axios.post(
-            GITHUB_API_URL,
-            { query: getLoggedInUserQuery },
-            {
-                headers: {
-                    Authorization: `Bearer ${GH_TOKEN}`,
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
-        return response.data.data.viewer.login;
-    } catch (error) {
-        console.error('Error fetching data from GitHub:', error);
-        process.exit(1);
-    }
-};
 
 // GraphQL query to get pull requests and reviews
-const getPrsAndReviewsQuery = async (org: string, fromDate: string | undefined, toDate: string | undefined) => {
-    const gitHubUser = await getLoggedInUser();
+const getPrsAndReviewsQuery = (org: string, fromDate: string | undefined, toDate: string | undefined, ghUser: string) => {
     const dateFilter = (fromDate || toDate)
         ? `createdAt: {${fromDate ? `gte: "${fromDate}"` : ''}${fromDate && toDate ? ', ' : ''}${toDate ? `lte: "${toDate}"` : ''}}`
         : '';
 
     return `
     {
-        search(query: "org:${org} is:pr author:${gitHubUser} ${dateFilter}", type: ISSUE, first: 100) {
+        search(query: "org:${org} is:pr author:${ghUser} ${dateFilter}", type: ISSUE, first: 100) {
             edges {
                 node {
                     ... on PullRequest {
@@ -82,18 +96,26 @@ const getPrsAndReviewsQuery = async (org: string, fromDate: string | undefined, 
 
 // Function to fetch the data from GitHub API
 const fetchPrsAndReviews = async (org: string, fromDate?: string, toDate?: string) => {
+    const ghUser = await fetchLoggedInUser(GH_TOKEN);
     try {
-        const response = await axios.post(
-            GITHUB_API_URL,
-            { query: getPrsAndReviewsQuery(org, fromDate, toDate) },
-            {
-                headers: {
-                    Authorization: `Bearer ${GH_TOKEN}`,
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
-        return response.data.data.search.edges;
+        const query = getPrsAndReviewsQuery(org, fromDate, toDate, ghUser);
+        const requestOptions: RequestInit = {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GH_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({query})
+        };
+
+        const response = await fetch(GITHUB_API_URL, requestOptions);
+
+        if (!response.ok) {
+            throw new Error(`GitHub API request failed with status: ${response.status}`);
+        }
+        const { data } = await response.json();
+
+        return data.search.edges;
     } catch (error) {
         console.error('Error fetching data from GitHub:', error);
         process.exit(1);
@@ -121,12 +143,12 @@ const generateHtml = (prData: any) => {
                 <a href="${pr.node.url}" target="_blank">${pr.node.title}</a>
                 <ul>
                     ${pr.node.reviews.edges
-                        .map((review: any) => {
-                            return `
+            .map((review: any) => {
+                return `
                                 <li><strong>${review.node.author.login}</strong> (${review.node.state}): ${review.node.body}</li>
                             `;
-                        })
-                        .join('')}
+            })
+            .join('')}
                 </ul>
             </li>
         `;
