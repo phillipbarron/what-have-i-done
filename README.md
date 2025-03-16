@@ -26,3 +26,9 @@ Instructions on how to use your project.
 # Run the project
 npm start [org] [from (optional)] [to (optional)]
 ```
+
+
+# Todo
+
+- Package with deno
+- Update args to allow passing relative dates
