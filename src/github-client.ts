@@ -1,9 +1,6 @@
 import fs from 'fs';
 
-// Define the GitHub API URL
 const GITHUB_API_URL = 'https://api.github.com/graphql';
-
-// Get the GitHub Token from the environment
 const GH_TOKEN = process.env.GH_TOKEN;
 
 if (!GH_TOKEN) {
@@ -11,9 +8,18 @@ if (!GH_TOKEN) {
     process.exit(1);
 }
 
-// A function to fetch the logged-in user's data from GitHub's GraphQL API
-async function fetchLoggedInUser(token: string): Promise<string> {
-    // The GraphQL query to fetch the logged-in user's details
+const getRequestWithOptions = (query: string) => {
+    return {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${GH_TOKEN}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query })
+    };
+}
+
+async function fetchLoggedInUser(): Promise<string> {
     const query = `
       query {
         viewer {
@@ -24,20 +30,9 @@ async function fetchLoggedInUser(token: string): Promise<string> {
       }
     `;
 
-    // Request options for the fetch call
-    const requestOptions: RequestInit = {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({query})
-    };
-
     try {
-        const response = await fetch(GITHUB_API_URL, requestOptions);
+        const response = await fetch(GITHUB_API_URL, getRequestWithOptions(query));
 
-        // Check if the response is ok (status 200)
         if (!response.ok) {
             throw new Error(`GitHub API request failed with status: ${response.status}`);
         }
@@ -45,7 +40,6 @@ async function fetchLoggedInUser(token: string): Promise<string> {
         const resp = await response.json();
         const { data: { viewer: { login : user }}} = resp
 
-        // Return the logged-in user's data (viewer)
         return user;
     } catch (error) {
         console.error('Error fetching GitHub user data:', error);
@@ -54,7 +48,6 @@ async function fetchLoggedInUser(token: string): Promise<string> {
 }
 
 
-// GraphQL query to get pull requests and reviews
 const getPrsAndReviewsQuery = (org: string, fromDate: string | undefined, toDate: string | undefined, ghUser: string) => {
     const dateFilter = (fromDate || toDate)
         ? `createdAt: {${fromDate ? `gte: "${fromDate}"` : ''}${fromDate && toDate ? ', ' : ''}${toDate ? `lte: "${toDate}"` : ''}}`
@@ -92,36 +85,24 @@ const getPrsAndReviewsQuery = (org: string, fromDate: string | undefined, toDate
     }
     `;
 };
-
-// Function to fetch the data from GitHub API
 const fetchPrsAndReviews = async (org: string, fromDate?: string, toDate?: string) => {
-    const ghUser = await fetchLoggedInUser(GH_TOKEN);
+    const githubUsername = await fetchLoggedInUser();
     try {
-        const query = getPrsAndReviewsQuery(org, fromDate, toDate, ghUser);
-        const requestOptions: RequestInit = {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${GH_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({query})
-        };
-
-        const response = await fetch(GITHUB_API_URL, requestOptions);
+        const query = getPrsAndReviewsQuery(org, fromDate, toDate, githubUsername);
+        const response = await fetch(GITHUB_API_URL, getRequestWithOptions(query));
 
         if (!response.ok) {
             throw new Error(`GitHub API request failed with status: ${response.status}`);
         }
-        const { data } = await response.json();
+        const { data : { search : { edges }} } = await response.json();
 
-        return data.search.edges;
+        return edges;
     } catch (error) {
         console.error('Error fetching data from GitHub:', error);
         process.exit(1);
     }
 };
 
-// Function to generate an HTML file with the results
 const generateHtml = (prData: any) => {
     let htmlContent = `
     <!DOCTYPE html>
@@ -163,11 +144,10 @@ const generateHtml = (prData: any) => {
     console.log('Generated prs_and_reviews.html');
 };
 
-// CLI Tool Implementation
 export const run = async () => {
     const args = process.argv.slice(2);
 
-    const org = args[0]; // Organization name (first argument)
+    const org = args[0]; // Organisation name (first argument)
     if (!org) {
         console.error('Please provide an organization name.');
         process.exit(1);
@@ -176,10 +156,8 @@ export const run = async () => {
     const fromDate = args[1]; // Optional 'from' date (second argument)
     const toDate = args[2]; // Optional 'to' date (third argument)
 
-    // Fetch PRs and reviews
     const prData = await fetchPrsAndReviews(org, fromDate, toDate);
 
-    // Generate and output the HTML file
     generateHtml(prData);
 };
 
