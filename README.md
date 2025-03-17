@@ -26,7 +26,7 @@ You must export a github token with repo access as `GH_TOKEN` in your environmen
 
 ```bash
 # Run the project
-npm start [org] [from (optional)] [to (optional)]
+yarn start [org] [from (optional)] [to (optional)]
 ```
 
 
